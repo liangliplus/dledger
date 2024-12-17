@@ -310,7 +310,7 @@ public class DLedgerLeaderElector {
 
         //abnormal case, deal with it immediately
         if (maxTerm.get() > term) {
-            LOGGER.warn("[{}] currentTerm{} is not the biggest={}, deal with it", memberState.getSelfId(), term, maxTerm.get());
+            logger.warn("[{}] currentTerm{} is not the biggest={}, deal with it", memberState.getSelfId(), term, maxTerm.get());
             changeRoleToCandidate(maxTerm.get());
             return;
         }

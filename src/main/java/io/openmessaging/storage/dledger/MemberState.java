@@ -45,21 +45,30 @@ public class MemberState {
     private final String peers;
     private Role role = CANDIDATE;
     private String leaderId;
+    //默认会读取 /tmp/dledger-seltId/currterm
+    // 记录当前票据和leader是谁
     private long currTerm = -1;
     private String currVoteFor;
+    //leader 的最后条目索引
     private long ledgerEndIndex = -1;
+    //leader 的投票轮次
     private long ledgerEndTerm = -1;
+    //最大投票轮次
     private long knownMaxTermInGroup = -1;
-    private Map<String, String> peerMap = new HashMap<>();
+    //存储集群中所有节点
 
+    private Map<String/* host */, String/* port */> peerMap = new HashMap<>();
+
+    //这个group 和 selfId 就可以作为 brokerName 和 brokerId
     public MemberState(DLedgerConfig config) {
-        this.group = config.getGroup();
-        this.selfId = config.getSelfId();
+        this.group = config.getGroup(); //default
+        this.selfId = config.getSelfId(); //n0
         this.peers = config.getPeers();
         for (String peerInfo : this.peers.split(";")) {
             peerMap.put(peerInfo.split("-")[0], peerInfo.split("-")[1]);
         }
         this.dLedgerConfig = config;
+        //初始化 currTerm  和 currVoteFor
         loadTerm();
     }
 
@@ -109,6 +118,10 @@ public class MemberState {
         persistTerm();
     }
 
+    /**
+     * 计算投票轮次
+     * @return
+     */
     public synchronized long nextTerm() {
         PreConditions.check(role == CANDIDATE, DLedgerResponseCode.ILLEGAL_MEMBER_STATE, "%s != %s", role, CANDIDATE);
         if (knownMaxTermInGroup > currTerm) {
@@ -117,7 +130,9 @@ public class MemberState {
             ++currTerm;
         }
         currVoteFor = null;
+        //输出投票轮次文件
         persistTerm();
+        //当前轮次
         return currTerm;
     }
 

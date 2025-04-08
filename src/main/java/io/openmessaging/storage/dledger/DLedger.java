@@ -33,6 +33,7 @@ public class DLedger {
         JCommander jc = builder.build();
         jc.parse(args);
         DLedgerServer dLedgerServer = new DLedgerServer(dLedgerConfig);
+        //启动入口
         dLedgerServer.startup();
         logger.info("[{}] group {} start ok with config {}", dLedgerConfig.getSelfId(), dLedgerConfig.getGroup(), JSON.toJSONString(dLedgerConfig));
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {

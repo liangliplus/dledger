@@ -33,6 +33,7 @@ public class BossCommand {
 
         JCommander.Builder builder = JCommander.newBuilder();
         builder.addCommand("server", new DLedgerConfig());
+        //把相关命令都放入JCommander 中
         for (String cmd : commands.keySet()) {
             builder.addCommand(cmd, commands.get(cmd));
         }

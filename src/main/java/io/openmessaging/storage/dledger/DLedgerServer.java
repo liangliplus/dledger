@@ -128,6 +128,7 @@ public class DLedgerServer implements DLedgerProtocolHander {
     }
 
     /**
+     * 日志追加处理
      * Handle the append requests:
      *  1.append the entry to local store
      *  2.submit the future to entry pusher and wait the quorum ack
@@ -142,6 +143,7 @@ public class DLedgerServer implements DLedgerProtocolHander {
             PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
             PreConditions.check(memberState.getGroup().equals(request.getGroup()), DLedgerResponseCode.UNKNOWN_GROUP, "%s != %s", request.getGroup(), memberState.getGroup());
             PreConditions.check(memberState.isLeader(), DLedgerResponseCode.NOT_LEADER);
+
             long currTerm = memberState.currTerm();
             if (dLedgerEntryPusher.isPendingFull(currTerm)) {
                 AppendEntryResponse appendEntryResponse = new AppendEntryResponse();
@@ -153,7 +155,9 @@ public class DLedgerServer implements DLedgerProtocolHander {
             } else {
                 DLedgerEntry dLedgerEntry = new DLedgerEntry();
                 dLedgerEntry.setBody(request.getBody());
+                //追加日志到leader 的pageCache中
                 DLedgerEntry resEntry = dLedgerStore.appendAsLeader(dLedgerEntry);
+                //等待从节点赋值响应ack
                 return dLedgerEntryPusher.waitAck(resEntry);
             }
         } catch (DLedgerException e) {

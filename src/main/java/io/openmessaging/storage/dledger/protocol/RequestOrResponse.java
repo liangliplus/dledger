@@ -17,6 +17,9 @@
 
 package io.openmessaging.storage.dledger.protocol;
 
+/**
+ * raft 通用参数抽象
+ */
 public class RequestOrResponse {
 
     protected String group;

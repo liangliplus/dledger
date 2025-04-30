@@ -23,6 +23,7 @@ public class DLedgerEntryCoder {
 
     public static void encode(DLedgerEntry entry, ByteBuffer byteBuffer) {
         byteBuffer.clear();
+        //计算消息总大小
         int size = entry.computSizeInBytes();
         //always put magic on the first position
         byteBuffer.putInt(entry.getMagic());

@@ -187,7 +187,7 @@ public class DLedgerLeaderElector {
             if (memberState.currTerm() == term) {
                 //设置role 和 leaderId为自己
                 memberState.changeToLeader(term);
-                lastSendHeartBeatTime = -1;
+                lastSendHeartBeatTime = -1; //因为是-1，会立即发送心跳包
                 //角色状态转换事件
                 handleRoleChange(term, MemberState.Role.LEADER);
                 logger.info("[{}] [ChangeRoleToLeader] from term: {} and currTerm: {}", memberState.getSelfId(), term, memberState.currTerm());
@@ -230,8 +230,6 @@ public class DLedgerLeaderElector {
      * 2.请求投票轮次 = 当前节点轮次， 判断是否投给请求节点 ，如果没有则告知原因
      * 3.请求投票轮次 > 当前节点轮次 告诉请求节点还未准备好
      *
-     *
-     *
      * @param request 定义一个投票请求对象
      * @param self
      * @return
@@ -248,7 +246,24 @@ public class DLedgerLeaderElector {
                 return CompletableFuture.completedFuture(new VoteResponse(request).term(memberState.currTerm())
                         .voteResult(VoteResponse.RESULT.REJECT_UNEXPECTED_LEADER));
             }
-            //正常的处理流程
+            /**
+             * step2： 判断发起节点，维护term 对投票进行 "仲裁"
+             * 下面对发起节点 term 进行仲裁
+             * 1. request.getTerm() < memberState.currTerm()
+             * 发起投票节点term 小于 当前节点term， 直接拒绝
+             * 2. request.getTerm() == memberState.currTerm()
+             * 如果发起节点的term 等于 当前节点term，说明地位平等，查看该节点是否投过票
+             * 2.1 如果未投票（currVoteFor == null） 或者已经投票给该节点，则继续后续逻辑(见step3)
+             * 2.2 如果该节点已存在leader 节点，则拒绝并告知已存在leader 节点
+             * 2.3 如果该节点还未有leader 节点，但已投给其它节点，拒绝请求节点，并告知已投票
+             *
+             * 3.如果发起投票节点term 大于当前节点term
+             * 拒绝请求节点投票请求，并告知自身还未准备投票， 自身会使用请求节点投票轮次立即进入到candidate 状态
+             *
+             * step3：判断请求节点ledgerEndTerm 与 当前节点的ledgerEndTerm（这里主要是判断日志复制进度）
+             * tips:只有当前节点未投过票 或者 已投给当前请求节点才进入
+             */
+
             if (request.getTerm() < memberState.currTerm()) { //Raft 中，term 越大 越有话语权， 如果请求投票轮次 小于 当前节点投票轮次，则设置 REJECT_EXPIRED_VOTE_TERM
                 return CompletableFuture.completedFuture(new VoteResponse(request).term(memberState.currTerm()).voteResult(VoteResponse.RESULT.REJECT_EXPIRED_VOTE_TERM));
             } else if (request.getTerm() == memberState.currTerm()) { //轮次相同，说明两个节点在同一轮投票。
@@ -272,7 +287,15 @@ public class DLedgerLeaderElector {
                 //only can handleVote when the term is consistent
                 return CompletableFuture.completedFuture(new VoteResponse(request).term(memberState.currTerm()).voteResult(VoteResponse.RESULT.REJECT_TERM_NOT_READY));
             }
-            //当发起投票节点 tLedgerEndTerm < 响应节点的LedgerEndTerm 则拒绝 （发起投票节点日志复制进度比当前节点还小，如果成为主节点会造成数据丢失）
+
+
+            /**
+             * step3 : 判断请求节点ledgerEndTerm 与 当前节点的ledgerEndTerm (判断日志复制进度)
+             * 4.1如果请求节点的LedgerEndTerm 小于 当前节点的 LedgerEndTerm则拒绝，其原因是请求节点的复制进度比当前节点，这种清空不能成为主节点的
+             * 4.2如果请求的LedgerEndTerm 相等，但是LedgerEndIndex 比当前节点小，则拒绝，原因同上一条
+             * 4.3如果请求的term 小于 ledgerEndTerm 以同样的理由拒绝
+             *
+             */
             if (request.getLedgerEndTerm() < memberState.getLedgerEndTerm()) {
                 return CompletableFuture.completedFuture(new VoteResponse(request).term(memberState.currTerm()).voteResult(VoteResponse.RESULT.REJECT_EXPIRED_LEDGER_TERM));
             } else if (request.getLedgerEndTerm() == memberState.getLedgerEndTerm() && request.getLedgerEndIndex() < memberState.getLedgerEndIndex()) {
@@ -455,6 +478,9 @@ public class DLedgerLeaderElector {
     /**
      * 该方法会放入一个死循环中，除非被选为leader ，不然一致会进入该方法
      * 什么时候 candidate 变为 follower 勒？？
+     *
+     * 选举仲裁逻辑
+     *
      * @throws Exception
      */
     private void maintainAsCandidate() throws Exception {
@@ -477,7 +503,7 @@ public class DLedgerLeaderElector {
             //如果是第一次投票，则term 为1
             if (lastParseResult == VoteResponse.ParseResult.WAIT_TO_VOTE_NEXT || needIncreaseTermImmediately) {
                 long prevTerm = memberState.currTerm();
-                term = memberState.nextTerm(); //默认当前轮次+1
+                term = memberState.nextTerm(); //清空给voteFor其它节点投票,默认当前轮次+1
                 logger.info("{}_[INCREASE_TERM] from {} to {}", memberState.getSelfId(), prevTerm, term);
                 lastParseResult = VoteResponse.ParseResult.WAIT_TO_REVOTE;
             } else {//如果上一次的投票结果不是WAIT_TO_VOTE_NEXT，则投票轮次依然为状态机内部维护好投票轮次（本质就是持久化文件中记录）
@@ -589,7 +615,7 @@ public class DLedgerLeaderElector {
         } else if (memberState.isQuorum(acceptedNum.get() + notReadyTermNum.get())) { //如果赞成 + 还未准备好过半，则立即发起投票投票
             parseResult = VoteResponse.ParseResult.REVOTE_IMMEDIATELY;
         } else if (memberState.isQuorum(acceptedNum.get() + biggerLedgerNum.get())) {
-            parseResult = VoteResponse.ParseResult.WAIT_TO_REVOTE;
+            parseResult = VoteResponse.ParseResult.WAIT_TO_REVOTE; // WAIT_TO_REVOTE 该状态特征下次投票时不增加投票轮次
             nextTimeToRequestVote = getNextTimeToRequestVote();
         } else {
             parseResult = VoteResponse.ParseResult.WAIT_TO_VOTE_NEXT;

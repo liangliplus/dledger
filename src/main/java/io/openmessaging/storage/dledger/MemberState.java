@@ -51,7 +51,7 @@ public class MemberState {
     private String currVoteFor;
     //leader 的最后条目索引
     private long ledgerEndIndex = -1;
-    //leader 的投票轮次
+    //leader 的投票轮次(当节点是leader 的时候，会把当前轮次 更新到ledgerEndTerm中)
     private long ledgerEndTerm = -1;
     //最大投票轮次
     private long knownMaxTermInGroup = -1;
@@ -225,6 +225,11 @@ public class MemberState {
         return defaultLock;
     }
 
+    /**
+     * 消息追加到follower 或者 leader 中后，就会更新下面两个元素
+     * @param index
+     * @param term
+     */
     public void updateLedgerIndexAndTerm(long index, long term) {
         this.ledgerEndIndex = index;
         this.ledgerEndTerm = term;

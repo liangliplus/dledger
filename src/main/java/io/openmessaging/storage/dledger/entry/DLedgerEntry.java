@@ -19,8 +19,11 @@ package io.openmessaging.storage.dledger.entry;
 
 public class DLedgerEntry {
 
+    //magic + size + entryIndex + entryTerm
     public final static int POS_OFFSET = 4 + 4 + 8 + 8;
+    //pos + channel + chainCrc + bodyCrc + bodySize
     public final static int HEADER_SIZE = POS_OFFSET + 8 + 4 + 4 + 4;
+    //body 开始偏移量
     public final static int BODY_OFFSET = HEADER_SIZE + 4;
 
     private int magic;
